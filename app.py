@@ -379,7 +379,12 @@ def display_predictions(predictions):
                 with col2:
                     if 'branch_distribution' in pred and pred['branch_distribution'] is not None:
                         st.write("**Branch Distribution:**")
-                        st.pie_chart(pred['branch_distribution'])
+                        # Convert to dataframe for plotting with plotly
+                        if isinstance(pred['branch_distribution'], pd.Series):
+                            branch_dist_df = pred['branch_distribution'].reset_index()
+                            branch_dist_df.columns = ['Branch', 'Count']
+                            fig = px.pie(branch_dist_df, values='Count', names='Branch', title='Branch Distribution')
+                            st.plotly_chart(fig)
                 
                 st.write("---")
     
