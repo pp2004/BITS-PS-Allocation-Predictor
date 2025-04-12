@@ -108,42 +108,89 @@ def show_data_upload_page():
     Upload both past and current semester data if available.
     """)
     
-    uploaded_file = st.file_uploader("Choose an Excel file", type="xlsx")
+    # Option to use predefined data files
+    use_sample_data = st.checkbox("Use sample data files (faster)")
     
-    if uploaded_file is not None:
-        try:
-            with st.spinner('Processing data...'):
-                # Process the uploaded Excel file
-                raw_data = process_excel_data(uploaded_file)
+    merged_data = None
+    
+    if use_sample_data:
+        st.write("Using sample data files from attached_assets folder.")
+        
+        with st.spinner('Processing sample data files...'):
+            try:
+                # Process the first sample file
+                file_path1 = "attached_assets/22-23 SEM2 (1).xlsx"
+                st.write(f"Processing file: {file_path1}")
+                raw_data1 = process_excel_data(file_path1)
                 
-                if raw_data is not None and not raw_data.empty:
-                    # Clean and preprocess the data
-                    cleaned_data = clean_data(raw_data)
-                    
-                    # Store the processed data in session state
-                    st.session_state.historical_data = cleaned_data
-                    
-                    # Display preview of the processed data
-                    st.success("Data processed successfully!")
-                    st.subheader("Preview of Processed Data")
-                    st.dataframe(cleaned_data.head(10))
-                    
-                    # Display some basic statistics
-                    st.subheader("Data Summary")
-                    st.write(f"Total Records: {len(cleaned_data)}")
-                    
-                    branches = cleaned_data['Branch'].value_counts()
-                    st.write("Branch Distribution:")
-                    st.bar_chart(branches)
-                    
-                    # Display PS station counts
-                    station_counts = cleaned_data['PS_Station'].value_counts().head(10)
-                    st.write("Top 10 Popular PS Stations:")
-                    st.bar_chart(station_counts)
+                # Process the second sample file
+                file_path2 = "attached_assets/24-25 SEM2 PS2.xlsx"
+                st.write(f"Processing file: {file_path2}")
+                raw_data2 = process_excel_data(file_path2)
+                
+                # Combine data from both files if they were processed successfully
+                if raw_data1 is not None and not raw_data1.empty and raw_data2 is not None and not raw_data2.empty:
+                    merged_data = pd.concat([raw_data1, raw_data2], ignore_index=True)
+                    st.success("Sample data files processed and merged successfully!")
+                elif raw_data1 is not None and not raw_data1.empty:
+                    merged_data = raw_data1
+                    st.success("First sample data file processed successfully!")
+                    st.warning("Second sample data file could not be processed.")
+                elif raw_data2 is not None and not raw_data2.empty:
+                    merged_data = raw_data2
+                    st.success("Second sample data file processed successfully!")
+                    st.warning("First sample data file could not be processed.")
                 else:
-                    st.error("Failed to process the file. Please ensure it has the required format.")
+                    st.error("Failed to process both sample data files. Please try uploading your own files.")
+            except Exception as e:
+                st.error(f"An error occurred while processing sample data files: {str(e)}")
+                st.error("Please try uploading your own files.")
+    else:
+        # User uploads their own file
+        uploaded_file = st.file_uploader("Choose an Excel file", type="xlsx")
+        
+        if uploaded_file is not None:
+            try:
+                with st.spinner('Processing data...'):
+                    # Process the uploaded Excel file
+                    raw_data = process_excel_data(uploaded_file)
+                    
+                    if raw_data is not None and not raw_data.empty:
+                        merged_data = raw_data
+                    else:
+                        st.error("Failed to process the file. Please ensure it has the required format.")
+            except Exception as e:
+                st.error(f"An error occurred while processing the file: {str(e)}")
+    
+    # Process the merged data if available
+    if merged_data is not None and not merged_data.empty:
+        try:
+            with st.spinner('Cleaning and preprocessing data...'):
+                # Clean and preprocess the data
+                cleaned_data = clean_data(merged_data)
+                
+                # Store the processed data in session state
+                st.session_state.historical_data = cleaned_data
+                
+                # Display preview of the processed data
+                st.success("Data cleaned and preprocessed successfully!")
+                st.subheader("Preview of Processed Data")
+                st.dataframe(cleaned_data.head(10))
+                
+                # Display some basic statistics
+                st.subheader("Data Summary")
+                st.write(f"Total Records: {len(cleaned_data)}")
+                
+                branches = cleaned_data['Branch'].value_counts()
+                st.write("Branch Distribution:")
+                st.bar_chart(branches)
+                
+                # Display PS station counts
+                station_counts = cleaned_data['PS_Station'].value_counts().head(10)
+                st.write("Top 10 Popular PS Stations:")
+                st.bar_chart(station_counts)
         except Exception as e:
-            st.error(f"An error occurred while processing the file: {str(e)}")
+            st.error(f"An error occurred during data cleaning: {str(e)}")
 
 
 def show_model_training_page():

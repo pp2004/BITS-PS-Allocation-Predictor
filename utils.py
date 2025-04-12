@@ -46,20 +46,46 @@ def extract_branch_from_id(student_id):
     if not isinstance(student_id, str):
         return 'Unknown'
     
-    # Look for branch code patterns in the student ID
-    pattern = r'([AB][1-9])'
-    match = re.search(pattern, student_id)
+    # Convert to string and normalize
+    student_id = str(student_id).strip().upper()
     
-    if match:
-        branch_code = match.group(1)
-        
-        # Map branch code to full branch name
-        for branch_name, code in BRANCH_CODES.items():
-            if code == branch_code:
-                return branch_name
-        
-        # If code is found but not in our mapping, return the code
-        return branch_code
+    # Look for branch code patterns in the student ID
+    # Try common patterns like: 2022A7PS0123H or 2022B1A70123P
+    patterns = [
+        r'(\d{4})([AB][1-9])([A-Z]{2})(\d{4})[A-Z]',   # Standard format: 2022A7PS0123H
+        r'(\d{4})([AB][1-9])([A-Z])(\d{5})[A-Z]',      # Alternate format: 2022A7P01234H
+        r'(\d{4})([AB][1-9])',                         # Simple format: 2022A7
+        r'([AB][1-9])'                                 # Just branch code: A7
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, student_id)
+        if match:
+            # Extract the branch code from the matched group
+            # The branch code is in the second group for the first two patterns
+            # and the first group for the last pattern
+            if len(match.groups()) >= 2:
+                branch_code = match.group(2)
+            else:
+                branch_code = match.group(1)
+            
+            # Map branch code to full branch name
+            for branch_name, code in BRANCH_CODES.items():
+                if code == branch_code:
+                    return branch_name
+            
+            # If code is found but not in our mapping, update the BRANCH_CODES dictionary
+            branch_name = f'{branch_code} - Unknown Program'
+            BRANCH_CODES[branch_name] = branch_code
+            return branch_name
+    
+    # If no pattern matched, try to find any branch code-like pattern
+    any_branch_match = re.search(r'[AB][1-9]', student_id)
+    if any_branch_match:
+        branch_code = any_branch_match.group(0)
+        branch_name = f'{branch_code} - Unknown Program'
+        BRANCH_CODES[branch_name] = branch_code
+        return branch_name
     
     return 'Unknown'
 

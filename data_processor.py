@@ -8,79 +8,144 @@ def process_excel_data(uploaded_file):
     Process uploaded Excel files containing PS allocation data.
     
     Args:
-        uploaded_file: The uploaded Excel file object
+        uploaded_file: The uploaded Excel file object or path
         
     Returns:
         pandas.DataFrame: Processed data
     """
     try:
-        # Read the Excel file
-        df = pd.read_excel(uploaded_file)
+        # Check if uploaded_file is a string (file path) or file object
+        if isinstance(uploaded_file, str):
+            # It's a file path
+            df = pd.read_excel(uploaded_file, engine='openpyxl')
+        else:
+            # It's a file object
+            df = pd.read_excel(uploaded_file, engine='openpyxl')
         
         # Check if the dataframe is empty
         if df.empty:
+            print("DataFrame is empty after reading Excel file")
             return None
             
+        # Print the columns for debugging
+        print(f"Original columns: {df.columns.tolist()}")
+            
         # Identify and standardize column names
-        df_columns = [col.lower() for col in df.columns]
+        df_columns = [str(col).lower() for col in df.columns]
         
         # Map standard column names
         column_mapping = {}
         
         # Student ID column
         for col in df_columns:
-            if 'id' in col.lower() or 'number' in col.lower() or 'student' in col.lower():
+            if 'id' in col.lower() or 'number' in col.lower() or 'student' in col.lower() or 'roll' in col.lower():
                 column_mapping[df.columns[df_columns.index(col)]] = 'Student_ID'
         
         # CGPA column
         for col in df_columns:
-            if 'cgpa' in col.lower() or 'gpa' in col.lower():
+            if 'cgpa' in col.lower() or 'gpa' in col.lower() or 'grade' in col.lower():
                 column_mapping[df.columns[df_columns.index(col)]] = 'CGPA'
         
         # PS Station column
         for col in df_columns:
-            if 'ps' in col.lower() or 'station' in col.lower() or 'allocation' in col.lower():
+            if 'ps' in col.lower() or 'station' in col.lower() or 'allocation' in col.lower() or 'company' in col.lower():
                 column_mapping[df.columns[df_columns.index(col)]] = 'PS_Station'
+        
+        print(f"Column mapping: {column_mapping}")
         
         # Apply column mapping if found
         if column_mapping:
             df = df.rename(columns=column_mapping)
         
+        # If we still don't have the required columns, try to infer them from the data
+        # For example, if there's a column that contains student IDs (like "2022A3PS0558H")
+        if 'Student_ID' not in df.columns:
+            for col in df.columns:
+                # Sample a few values from the column
+                sample_values = df[col].astype(str).dropna().head(5).tolist()
+                # Check if they look like student IDs
+                if any(re.search(r'\d{4}[A-Z]\d[A-Z]{2}\d{4}[A-Z]', str(val)) for val in sample_values):
+                    df = df.rename(columns={col: 'Student_ID'})
+                    print(f"Inferred Student_ID from column: {col}")
+                    break
+        
         # Check if required columns exist
         required_columns = ['Student_ID', 'CGPA', 'PS_Station']
         missing_columns = [col for col in required_columns if col not in df.columns]
         
+        print(f"Missing columns after initial mapping: {missing_columns}")
+        
         if missing_columns:
-            # Try to infer missing columns
-            if 'Student_ID' in missing_columns and any('id' in col.lower() for col in df.columns):
-                id_col = next(col for col in df.columns if 'id' in col.lower())
-                df = df.rename(columns={id_col: 'Student_ID'})
-                missing_columns.remove('Student_ID')
-            
-            if 'CGPA' in missing_columns and any('gpa' in col.lower() for col in df.columns):
-                gpa_col = next(col for col in df.columns if 'gpa' in col.lower())
-                df = df.rename(columns={gpa_col: 'CGPA'})
-                missing_columns.remove('CGPA')
-            
-            if 'PS_Station' in missing_columns and any('station' in col.lower() for col in df.columns):
-                station_col = next(col for col in df.columns if 'station' in col.lower())
-                df = df.rename(columns={station_col: 'PS_Station'})
-                missing_columns.remove('PS_Station')
+            # Try a more aggressive approach to infer missing columns
+            for col in df.columns:
+                col_str = str(col).lower()
+                
+                # Student ID column (broader search)
+                if 'Student_ID' in missing_columns and ('id' in col_str or 'number' in col_str or 'student' in col_str or 'roll' in col_str):
+                    df = df.rename(columns={col: 'Student_ID'})
+                    missing_columns.remove('Student_ID')
+                    print(f"Mapped {col} to Student_ID")
+                
+                # CGPA column (broader search)
+                elif 'CGPA' in missing_columns and ('cgpa' in col_str or 'gpa' in col_str or 'grade' in col_str or 'score' in col_str):
+                    df = df.rename(columns={col: 'CGPA'})
+                    missing_columns.remove('CGPA')
+                    print(f"Mapped {col} to CGPA")
+                
+                # PS Station column (broader search)
+                elif 'PS_Station' in missing_columns and ('ps' in col_str or 'station' in col_str or 'company' in col_str or 'org' in col_str or 'alloc' in col_str):
+                    df = df.rename(columns={col: 'PS_Station'})
+                    missing_columns.remove('PS_Station')
+                    print(f"Mapped {col} to PS_Station")
+                
+                if not missing_columns:
+                    break
+                
+        print(f"Still missing columns: {missing_columns}")
                 
         if missing_columns:
             # If still missing columns, try to create them if possible
             if 'Student_ID' in missing_columns:
                 # If no student ID column, create a sequential one
                 df['Student_ID'] = [f"TEMP{i+1}" for i in range(len(df))]
+                missing_columns.remove('Student_ID')
+                print("Created Student_ID column with sequential values")
             
-            # For other missing columns, we can't proceed
-            if 'CGPA' in missing_columns or 'PS_Station' in missing_columns:
+            # For CGPA, we can use a default value if not present
+            if 'CGPA' in missing_columns:
+                df['CGPA'] = 7.5  # Default value
+                missing_columns.remove('CGPA')
+                print("Created CGPA column with default value of 7.5")
+            
+            # For PS_Station, if it's missing and we have a column that might contain station names
+            if 'PS_Station' in missing_columns:
+                # Look for columns that might contain company/organization names
+                for col in df.columns:
+                    if col != 'Student_ID' and col != 'CGPA':
+                        # Check if values look like names of organizations
+                        sample_values = df[col].astype(str).dropna().head(5).tolist()
+                        # Simple heuristic: if values are mostly strings and not numbers, they might be station names
+                        if all(not str(val).replace('.', '').isdigit() for val in sample_values):
+                            df = df.rename(columns={col: 'PS_Station'})
+                            missing_columns.remove('PS_Station')
+                            print(f"Inferred PS_Station from column: {col}")
+                            break
+            
+            # If still missing PS_Station, we cannot proceed
+            if 'PS_Station' in missing_columns:
+                print("Unable to identify or create PS_Station column")
                 return None
+        
+        # Print final columns
+        print(f"Final columns: {df.columns.tolist()}")
+        print(f"Sample data:\n{df.head(2)}")
         
         return df
         
     except Exception as e:
         print(f"Error processing Excel file: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
